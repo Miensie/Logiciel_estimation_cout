@@ -39,3 +39,20 @@ package-mode = false
 
 [tool.poetry.group.dev.dependencies]
 flet = {extras = ["all"], version = "0.28.3"}
+
+[build]
+dependencies = [
+    "reportlab",
+    "pillow",
+]
+
+[build.windows]
+additional_libs = [
+    "reportlab",
+]
+
+[package]
+include_packages = [
+    "reportlab",
+    "PIL",
+]
