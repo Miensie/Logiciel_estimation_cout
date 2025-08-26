@@ -126,7 +126,7 @@ jobs:
       - name: Build Windows EXE with PyInstaller
         shell: pwsh
         run: |
-          pyinstaller main.py --onefile --noconsole `
+          pyinstaller ./src/main.py --onefile --noconsole `
             --hidden-import=reportlab `
             --hidden-import=PIL `
             --hidden-import=PIL._imaging
