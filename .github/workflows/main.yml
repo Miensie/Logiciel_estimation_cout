@@ -1,0 +1,324 @@
+name: All Builds (Linux, macOS, Windows, Android, IPA, APK, AAB)
+
+on:
+  # Runs on push to any of the below branches
+  push:
+    branches:
+      - master
+      - main
+  # Runs on pull request events that target one of the below branches
+  pull_request:
+    branches:
+      - master
+      - main
+
+  # Allows you to run this workflow manually from the Actions tab of the repository
+  workflow_dispatch:
+
+env:
+  BUILD_NUMBER: 1
+  BUILD_VERSION: 1.0.0
+  PYTHON_VERSION: 3.12.2
+  FLUTTER_VERSION: 3.22.2
+  FLET_VERSION: 0.27.5  # Nouvelle variable pour cohérence
+  ORG_NAME: com.mycompany
+  APP_NAME: reminder_geeadinp
+
+jobs:
+  build-linux:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup Python ${{ env.PYTHON_VERSION }}
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+
+    - name: Install Python Dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+
+    - name: Setup Flutter ${{ env.FLUTTER_VERSION }}
+      uses: subosito/flutter-action@v2
+      with:
+        flutter-version: ${{ env.FLUTTER_VERSION }}
+
+    - name: Patch for linux build
+      run: |
+        flutter doctor
+        sudo apt-get update -y
+        sudo apt-get install -y ninja-build libgtk-3-dev
+        flutter doctor
+
+    - name: Flet Build Linux
+      run: |
+        flutter config --no-analytics 
+        flet build linux --verbose --build-number=$BUILD_NUMBER --build-version=$BUILD_VERSION
+
+    - name: Upload Linux Artifact
+      uses: actions/upload-artifact@v4.3.4
+      with:
+        name: linux-build-artifact
+        path: build/linux
+        if-no-files-found: warn
+        overwrite: false
+
+  build-macos:
+    runs-on: macos-latest
+  
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+  
+    - name: Setup Python ${{ env.PYTHON_VERSION }}
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+  
+    - name: Install Python Dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+  
+    - name: Setup Flutter ${{ env.FLUTTER_VERSION }}
+      uses: subosito/flutter-action@v2
+      with:
+        flutter-version: ${{ env.FLUTTER_VERSION }}
+  
+    - name: Flet Build macOS
+      run: |
+        flutter config --no-analytics
+        flet build macos --verbose --build-number=$BUILD_NUMBER --build-version=$BUILD_VERSION
+  
+    - name: Upload macOS Artifact
+      uses: actions/upload-artifact@v4.3.4
+      with:
+        name: macos-build-artifact
+        path: build/macos
+        if-no-files-found: warn
+        overwrite: false
+
+  build-windows:
+    runs-on: windows-latest
+    env:
+      PYTHONIOENCODING: utf-8  # Force UTF-8 encoding
+      PYTHONUTF8: 1  # Enable UTF-8 mode
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup Python ${{ env.PYTHON_VERSION }}
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+
+    - name: Install Python Dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install flet-cli --upgrade  # Forcer la mise à jour
+
+    - name: Setup Flutter ${{ env.FLUTTER_VERSION }}
+      uses: subosito/flutter-action@v2
+      with:
+        flutter-version: ${{ env.FLUTTER_VERSION }}
+
+    - name: Build Windows
+      shell: pwsh
+      run: |
+        $env:PYTHONIOENCODING = "utf-8"
+        flutter config --enable-windows-desktop
+        flet build windows
+
+    - name: Upload Windows Artifact
+      uses: actions/upload-artifact@v4.3.4
+      with:
+        name: windows-build-artifact
+        path: build/windows
+        if-no-files-found: warn
+        overwrite: false
+
+  build-aab:
+    runs-on: macos-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup Python ${{ env.PYTHON_VERSION }}
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+
+    - name: Install Python Dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+
+    - name: Setup Flutter ${{ env.FLUTTER_VERSION }}
+      uses: subosito/flutter-action@v2
+      with:
+        flutter-version: ${{ env.FLUTTER_VERSION }}
+
+    - name: Flet Build AAB
+      run: |
+        flutter config --no-analytics
+        flet build aab --verbose --build-number=$BUILD_NUMBER --build-version=$BUILD_VERSION
+
+    - name: Upload AAB Artifact
+      uses: actions/upload-artifact@v4.3.4
+      with:
+        name: aab-build-artifact
+        path: build/aab
+        if-no-files-found: warn
+        overwrite: false
+
+  build-apk:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup Python ${{ env.PYTHON_VERSION }}
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+
+    # Synchroniser la version Flet avec pyproject.toml
+    - name: Install Python Dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install flet==0.27.5  # Correspond à la version dans pyproject.toml
+        pip install -r requirements.txt
+
+    - name: Setup Flutter ${{ env.FLUTTER_VERSION }}
+      uses: subosito/flutter-action@v2
+      with:
+        flutter-version: ${{ env.FLUTTER_VERSION }}
+
+    - name: Setup Java JDK
+      uses: actions/setup-java@v4.2.1
+      with:
+        distribution: 'temurin'
+        java-version: '21'
+
+    # Ajouter la configuration Android basée sur pyproject.toml
+    - name: Configure Android Build
+      run: |
+        flutter config --no-analytics
+        flutter config --enable-android
+        
+        # Vérifier la configuration Android
+        flutter doctor -v
+
+    # Utiliser les paramètres du pyproject.toml pour le build
+    - name: Flet Build APK
+      run: |
+        # Build avec les paramètres spécifiques à votre configuration
+        flet build apk \
+          --verbose \
+          --build-number=$BUILD_NUMBER \
+          --build-version=$BUILD_VERSION \
+          --org com.mycompany \
+          --project reminder_geeadinp \
+          --description "Reminder GEEAD INPHB" \
+          --split-per-abi
+
+    # Améliorer l'upload des artifacts avec une structure plus claire
+    - name: Upload APK Artifacts
+      uses: actions/upload-artifact@v4.3.4
+      with:
+        name: android-apk-builds
+        path: |
+          build/apk/*.apk
+          build/apk/**/*.apk
+        if-no-files-found: warn
+        overwrite: false
+        retention-days: 30
+
+    # Optionnel : Upload des métadonnées de build
+    - name: Upload Build Info
+      uses: actions/upload-artifact@v4.3.4
+      with:
+        name: apk-build-info
+        path: |
+          build/apk/app-release.apk.sha1
+          build/apk/output-metadata.json
+        if-no-files-found: ignore
+        overwrite: false
+        retention-days: 7
+
+  build-ipa:
+    runs-on: macos-latest
+  
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+  
+    - name: Setup Python ${{ env.PYTHON_VERSION }}
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+  
+    - name: Install Python Dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+  
+    - name: Setup Flutter ${{ env.FLUTTER_VERSION }}
+      uses: subosito/flutter-action@v2
+      with:
+        flutter-version: ${{ env.FLUTTER_VERSION }}
+      
+    - name: Configure Xcode
+      run: |
+        sudo xcode-select --switch /Applications/Xcode.app
+        sudo xcodebuild -license accept
+  
+    - name: Flet Build IPA
+      run: |
+        flutter config --no-analytics
+        flet build ipa --verbose --build-number=$BUILD_NUMBER --build-version=$BUILD_VERSION 
+  
+    - name: Upload IPA Artifact
+      uses: actions/upload-artifact@v4.3.4
+      with:
+        name: ipa-build-artifact
+        path: build/ipa
+        if-no-files-found: warn
+        overwrite: false
+
+  build-web:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}  # Remplace par la version de Python que tu utilises
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install flet
+
+    - name: Build Web
+      run: |
+        flet publish main.py
+
+    - name: Upload Web Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: web-build
+        path: build/web
+        if-no-files-found: warn
+        overwrite: false
