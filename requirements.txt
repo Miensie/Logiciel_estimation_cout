@@ -1,3 +1,5 @@
-flet
-reportlab
+flet==0.27.5
 pillow
+reportlab
+tempfile-module
+sqlite3-module
