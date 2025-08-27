@@ -9,7 +9,73 @@ from reportlab.lib import colors
 from reportlab.lib.units import inch
 import tempfile
 import os
+import sys
 import json
+
+# ===== UTILITAIRE POUR GÉRER LES ASSETS =====
+def get_asset_path(relative_path):
+    """
+    Retourne le chemin correct vers un asset, que ce soit en développement ou en exécutable.
+    
+    Args:
+        relative_path (str): Chemin relatif depuis le dossier assets (ex: "icon.png", "images/logo.jpg")
+    
+    Returns:
+        str: Chemin complet vers l'asset
+    """
+    try:
+        # PyInstaller stocke les fichiers temporaires dans _MEIPASS
+        base_path = sys._MEIPASS
+        asset_path = os.path.join(base_path, 'assets', relative_path)
+        
+        if os.path.exists(asset_path):
+            return asset_path
+            
+    except AttributeError:
+        # Nous sommes en mode développement
+        pass
+    
+    # Chemins pour le mode développement
+    dev_paths = [
+        os.path.join('src', 'assets', relative_path),
+        os.path.join('assets', relative_path),
+        os.path.join('.', 'src', 'assets', relative_path),
+        os.path.join('.', 'assets', relative_path)
+    ]
+    
+    for path in dev_paths:
+        if os.path.exists(path):
+            return os.path.abspath(path)
+    
+    # Si aucun chemin n'est trouvé, retourner le chemin par défaut
+    print(f"Warning: Asset '{relative_path}' non trouvé")
+    return relative_path
+
+def list_available_assets():
+    """Liste tous les assets disponibles pour debug"""
+    try:
+        # En mode exécutable
+        base_path = sys._MEIPASS
+        assets_path = os.path.join(base_path, 'assets')
+        if os.path.exists(assets_path):
+            print("Assets disponibles dans l'exécutable :")
+            for root, dirs, files in os.walk(assets_path):
+                for file in files:
+                    rel_path = os.path.relpath(os.path.join(root, file), assets_path)
+                    print(f"  - {rel_path}")
+    except AttributeError:
+        # En mode développement
+        dev_assets_paths = ['src/assets', 'assets']
+        for assets_path in dev_assets_paths:
+            if os.path.exists(assets_path):
+                print(f"Assets disponibles en développement ({assets_path}) :")
+                for root, dirs, files in os.walk(assets_path):
+                    for file in files:
+                        rel_path = os.path.relpath(os.path.join(root, file), assets_path)
+                        print(f"  - {rel_path}")
+                break
+
+# ===== CLASSES PRINCIPALES =====
 
 class DatabaseManager:
     def __init__(self, db_path="projet_estimation.db"):
@@ -320,24 +386,16 @@ class PDFExporter:
             spaceBefore=3
         )
         
-        # Chemin vers le logo - vérifier plusieurs emplacements possibles
-        possible_logo_paths = [
-            "./src/assets/icon.png",
-            "./assets/icon.png",
-            "./icon.png",
-            "icon.png"
-        ]
+        # CORRECTION : Utiliser get_asset_path pour trouver le logo
+        logo_path = get_asset_path("icon.png")  # ou le nom de votre fichier logo
         
-        logo_path = None
-        for path in possible_logo_paths:
-            if os.path.exists(os.path.abspath(path)):
-                logo_path = os.path.abspath(path)
-                break
+        # Vérifier si le logo existe
+        logo_exists = os.path.exists(logo_path) if logo_path else False
         
         # === EN-TÊTE AVEC LOGO ET INFOS ENTREPRISE ===
         
         # Créer le logo ou un placeholder
-        if logo_path:
+        if logo_exists:
             logo_element = self.create_logo_image(logo_path, max_width=60, max_height=50)
         else:
             logo_element = Paragraph("PROSEEN<br/>LOGO", ParagraphStyle(
@@ -507,7 +565,8 @@ class PDFExporter:
         doc.build(story)
         return filename
 
-# Modifications pour la classe CostEstimationApp
+# Le reste du code (CostEstimationApp, BDApp, WelcomePage) reste identique
+# mais il faut ajouter la configuration de l'icône de la fenêtre dans main()
 
 class CostEstimationApp:
     def __init__(self):
@@ -533,6 +592,95 @@ class CostEstimationApp:
         # Initialize template tables for all categories
         for category_key in self.categories.keys():
             self.db.create_category_template_table(category_key)
+    
+    def main(self, page: ft.Page):
+        """Initialiser la page principale de l'application"""
+        self.page = page
+        page.title = "Estimation des Coûts de Projets"
+        page.theme_mode = ft.ThemeMode.LIGHT
+        page.window_width = 1200
+        page.window_height = 800
+        page.padding = 0
+        logo_path = get_asset_path("icon.ico")
+        page.window_icon = logo_path
+        
+        # CORRECTION : Configuration de l'icône de la fenêtre
+        icon_path = get_asset_path("icon.ico")  # ou le nom de votre fichier icône
+        if os.path.exists(icon_path):
+            page.window.icon = icon_path
+        
+        self.file_picker = ft.FilePicker(on_result=self.save_pdf_dialog_result)
+        page.overlay.append(self.file_picker)
+        
+        # Navigation rail
+        self.nav_rail = ft.NavigationRail(
+            selected_index=0,
+            label_type=ft.NavigationRailLabelType.ALL,
+            min_width=200,
+            destinations=[
+                ft.NavigationRailDestination(
+                    icon=ft.Icons.HOME,
+                    selected_icon=ft.Icons.HOME,
+                    label="Accueil"
+                ),
+                ft.NavigationRailDestination(
+                    icon=ft.Icons.ADD,
+                    selected_icon=ft.Icons.ADD,
+                    label="Nouveau Projet"
+                ),
+                ft.NavigationRailDestination(
+                    icon=ft.Icons.CALCULATE,
+                    selected_icon=ft.Icons.CALCULATE,
+                    label="Estimation"
+                ),
+                ft.NavigationRailDestination(
+                    icon=ft.Icons.BAR_CHART,
+                    selected_icon=ft.Icons.BAR_CHART,
+                    label="Graphiques"
+                ),
+            ],
+            on_change=self.nav_changed
+        )
+        
+        self.nav_rail.selected_index = 0
+        self.nav_rail.on_change = self.nav_changed
+
+        # Container principal pour le contenu
+        self.content_area = ft.Container(
+            expand=True,
+            padding=20,
+        )
+        
+        page.appbar = ft.AppBar(
+            leading_width=50,
+            title=ft.Text("Estimation des Coûts de Projets", size=30, weight=ft.FontWeight.BOLD),
+            center_title=True,
+            bgcolor=ft.Colors.BLUE_100,
+            actions=[
+                ft.IconButton(ft.Icons.INFO,
+                    tooltip="À propos",
+                    on_click=lambda e: self.show_snack_bar("Application de gestion des coûts de projets", ft.Colors.BLUE_700)),
+                ft.IconButton(ft.Icons.HOME,
+                    tooltip="Page d'accueil",
+                    on_click=self.go_to_accueil),
+            ]
+        )
+
+        # Layout principal
+        page.controls.clear()
+        page.add(
+            ft.Row([
+                self.nav_rail,
+                ft.VerticalDivider(width=1),
+                self.content_area
+            ], expand=True, alignment=ft.MainAxisAlignment.START
+        ))
+        
+        # Charger la page d'accueil
+        self.show_home_page()
+    
+    # Toutes les autres méthodes de CostEstimationApp restent identiques...
+    # [Le reste du code reste inchangé car il ne concerne pas directement les assets]
     
     def show_new_project_page(self):
         """Page de création de nouveau projet avec sélection de catégories"""
@@ -587,6 +735,7 @@ class CostEstimationApp:
         ])
         
         self.content_area.content = content
+        self.page.update()
     
     def create_project(self, e):
         """Créer un nouveau projet avec les catégories sélectionnées"""
@@ -860,88 +1009,6 @@ class CostEstimationApp:
         
         self.content_area.content = content
         self.page.update()
-
-    # Le reste des méthodes restent identiques...
-    def main(self, page: ft.Page):
-        """Initialiser la page principale de l'application"""
-        self.page = page
-        page.title = "Estimation des Coûts de Projets"
-        page.theme_mode = ft.ThemeMode.LIGHT
-        page.window_width = 1200
-        page.window_height = 800
-        page.padding = 0
-        self.file_picker = ft.FilePicker(on_result=self.save_pdf_dialog_result)
-        page.overlay.append(self.file_picker)
-        
-        # Navigation rail
-        self.nav_rail = ft.NavigationRail(
-            selected_index=0,
-            label_type=ft.NavigationRailLabelType.ALL,
-            min_width=200,
-            destinations=[
-                ft.NavigationRailDestination(
-                    icon=ft.Icons.HOME,
-                    selected_icon=ft.Icons.HOME,
-                    label="Accueil"
-                ),
-                ft.NavigationRailDestination(
-                    icon=ft.Icons.ADD,
-                    selected_icon=ft.Icons.ADD,
-                    label="Nouveau Projet"
-                ),
-                ft.NavigationRailDestination(
-                    icon=ft.Icons.CALCULATE,
-                    selected_icon=ft.Icons.CALCULATE,
-                    label="Estimation"
-                ),
-                ft.NavigationRailDestination(
-                    icon=ft.Icons.BAR_CHART,
-                    selected_icon=ft.Icons.BAR_CHART,
-                    label="Graphiques"
-                ),
-            ],
-            on_change=self.nav_changed
-        )
-        
-        self.nav_rail.selected_index = 0
-        self.nav_rail.on_change = self.nav_changed
-
-        # Container principal pour le contenu
-        self.content_area = ft.Container(
-            expand=True,
-            padding=20,
-        )
-        
-        page.appbar = ft.AppBar(
-            leading_width=50,
-            title=ft.Text("Estimation des Coûts de Projets", size=30, weight=ft.FontWeight.BOLD),
-            center_title=True,
-            bgcolor=ft.Colors.BLUE_100,
-            actions=[
-                ft.IconButton(ft.Icons.INFO,
-                    tooltip="À propos",
-                    on_click=lambda e: self.show_snack_bar("Application de gestion des coûts de projets", ft.Colors.BLUE_700)),
-                ft.IconButton(ft.Icons.HOME,
-                    tooltip="Page d'accueil",
-                    on_click=self.go_to_accueil),
-            ]
-        )
-
-        # Layout principal
-        page.controls.clear()
-        page.add(
-            ft.Row([
-                self.nav_rail,
-                ft.VerticalDivider(width=1),
-                self.content_area
-            ], expand=True, alignment=ft.MainAxisAlignment.START
-        ))
-        
-        # Charger la page d'accueil
-        self.show_home_page()
-    
-    # Toutes les autres méthodes restent identiques à votre code original
-    # (nav_changed, show_home_page, edit_project, export_project_pdf, etc.)
     
     def nav_changed(self, e):
         selected = e.control.selected_index
@@ -1040,6 +1107,7 @@ class CostEstimationApp:
             ])
         
         self.content_area.content = content
+        self.page.update()
     
     def go_to_home(self, e=None):
         """Aller à la page d'accueil"""
@@ -1061,16 +1129,14 @@ class CostEstimationApp:
         self.current_project = project
         self.show_project_categories()
     
-
-    
     def export_project_pdf(self, project):
         """Exporter un projet en PDF"""
         self.current_project = project
-            # Ouvrir le dialogue "Enregistrer sous"
+        # Ouvrir le dialogue "Enregistrer sous"
         self.file_picker.save_file(
-                allowed_extensions=["pdf"],
-                file_name=f"estimation_projet_{project[0]}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
-            )
+            allowed_extensions=["pdf"],
+            file_name=f"estimation_projet_{project[0]}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
+        )
     
     def save_pdf_dialog_result(self, e: ft.FilePickerResultEvent):
         if e.path:
@@ -1082,7 +1148,6 @@ class CostEstimationApp:
         else:
             self.show_snack_bar("Export annulé", ft.Colors.RED)
  
-    
     def show_charts_page(self):
         """Page des graphiques de répartition des coûts"""
         projects = self.db.get_projects()
@@ -1269,7 +1334,6 @@ class CostEstimationApp:
         self.chart_container.content = charts_content
         self.page.update()
     
-    
     def go_to_categories(self, e=None):
         """Retourner aux catégories du projet"""
         self.show_project_categories()
@@ -1392,9 +1456,12 @@ class CostEstimationApp:
             content=ft.Text(message),
             bgcolor=color,
         )
-        self.page.open(snack_bar)
+        self.page.snack_bar = snack_bar
+        snack_bar.open = True
         self.page.update()
 
+
+    
 class BDApp:
     def __init__(self):
         self.db = DatabaseManager()
@@ -1458,7 +1525,6 @@ class BDApp:
             bgcolor=ft.Colors.BLUE_50,
             expand=True
         )
-        
         self.page.controls.clear()
         self.page.add(main_container)
         self.page.update()
@@ -1477,6 +1543,7 @@ class BDApp:
     def show_database_interface(self):
         """Afficher l'interface de gestion de la base de données"""
         self.page.controls.clear()
+        self.page.title = "Gestion de la Base de Données"
         
         # AppBar
         self.page.appbar = ft.AppBar(
@@ -1669,6 +1736,8 @@ class BDApp:
         page.window_width = 1200
         page.window_height = 800
         page.padding = 20
+        logo_path = get_asset_path("icon.ico")
+        self.page.window_icon = logo_path
         
         self.categories = {
             "logistique_transport": "Logistique & Transport",
@@ -1694,13 +1763,14 @@ class BDApp:
         self.page.snack_bar = snack_bar
         snack_bar.open = True
         self.page.update()
-    
-
 
 
 class WelcomePage:
     def __init__(self, page: ft.Page):
         self.page = page
+        self.logo_path = get_asset_path("icon.ico")
+        print("Logo path:", self.logo_path)
+        page.window_icon = self.logo_path
         self.app = CostEstimationApp()
 
     def main(self):
@@ -1822,6 +1892,7 @@ class WelcomePage:
 def main(page: ft.Page):
     app = WelcomePage(page)
     app.main()
+    
     
 
 if __name__ == "__main__":
