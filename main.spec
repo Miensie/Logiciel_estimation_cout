@@ -66,28 +66,54 @@ hiddenimports = [
     'typing',
 ]
 
-# Données à inclure (assets, etc.)
-datas = []
-if os.path.exists('assets'):
-    datas.append(('assets', 'assets'))
-if os.path.exists('src/assets'):
-    datas.append(('src/assets', 'assets'))
-
-# Binaires supplémentaires (DLL sqlite3 sur Windows)
-binaries = []
-if is_windows:
-    # Chercher les DLL sqlite3
-    python_dir = Path(sys.executable).parent
-    possible_sqlite_dlls = [
-        python_dir / "DLLs" / "sqlite3.dll",
-        python_dir / "Library" / "bin" / "sqlite3.dll",
-        Path(sys.prefix) / "DLLs" / "sqlite3.dll",
+# CORRECTION PRINCIPALE : Gestion correcte des assets
+def collect_assets():
+    """Collecte tous les assets nécessaires"""
+    assets_data = []
+    
+    # Chemins possibles pour les assets
+    possible_paths = [
+        'src/assets',
+        'assets',
+        './src/assets',
+        './assets'
     ]
     
-    for dll_path in possible_sqlite_dlls:
-        if dll_path.exists():
-            binaries.append((str(dll_path), '.'))
-            print(f"Ajout DLL sqlite3: {dll_path}")
+    for asset_path in possible_paths:
+        if os.path.exists(asset_path):
+            print(f"Assets trouvés dans : {asset_path}")
+            # Ajouter tous les fichiers du dossier assets
+            for root, dirs, files in os.walk(asset_path):
+                for file in files:
+                    src_file = os.path.join(root, file)
+                    # Calculer le chemin de destination relatif
+                    rel_path = os.path.relpath(root, asset_path)
+                    if rel_path == '.':
+                        dest_dir = 'assets'
+                    else:
+                        dest_dir = os.path.join('assets', rel_path)
+                    assets_data.append((src_file, dest_dir))
+            break
+    
+    return assets_data
+
+# Collecte des données (assets, etc.)
+datas = collect_assets()
+
+# Binaires supplémentaires
+binaries = []
+if is_windows:
+    # Chemin SQLite DLL pour Windows
+    sqlite_dll_paths = [
+        'D:\\python313\\DLLs\\sqlite3.dll',
+        sys.executable.replace('python.exe', 'DLLs\\sqlite3.dll'),
+        os.path.join(sys.prefix, 'DLLs', 'sqlite3.dll')
+    ]
+    
+    for dll_path in sqlite_dll_paths:
+        if os.path.exists(dll_path):
+            binaries.append((dll_path, '.'))
+            break
 
 a = Analysis(
     [main_script],
@@ -124,18 +150,33 @@ a.binaries = [x for x in a.binaries if not any(exclude in x[0] for exclude in ['
 pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
 
 # Configuration de l'exécutable selon la plateforme
+def find_icon():
+    """Trouve l'icône appropriée pour la plateforme"""
+    icon_paths = []
+    
+    if is_windows:
+        icon_paths = ['./src/assets/icon.ico', './assets/icon.ico', 'src/assets/icon.ico', 'assets/icon.ico']
+    elif is_macos:
+        icon_paths = ['./src/assets/icon.icns', './assets/icon.icns', 'src/assets/icon.icns', 'assets/icon.icns']
+    else:  # Linux
+        icon_paths = ['./src/assets/icon.png', './assets/icon.png', 'src/assets/icon.png', 'assets/icon.png']
+    
+    for icon_path in icon_paths:
+        if os.path.exists(icon_path):
+            return icon_path
+    return None
+
 if is_windows:
     exe_name = 'EstimationCouts.exe'
     console = False  # Application fenêtrée
-    icon_path = 'assets/icon.ico' if os.path.exists('assets/icon.ico') else None
 elif is_macos:
     exe_name = 'EstimationCouts'
     console = False
-    icon_path = 'assets/icon.icns' if os.path.exists('assets/icon.icns') else None
 else:  # Linux
     exe_name = 'EstimationCouts'
     console = False
-    icon_path = 'assets/icon.png' if os.path.exists('assets/icon.png') else None
+
+icon_path = find_icon()
 
 exe = EXE(
     pyz,
